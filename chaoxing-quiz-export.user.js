@@ -73,6 +73,38 @@
       .replace(/'/g, '&#39;');
   }
 
+  /** cxSecret 字体混淆解码映射表 (超星学习通常见替代字符) */
+  const CXSECRET_MAP = {
+    0x6091: 0x5C42, // 悑 → 层
+    0x6092: 0x679C, // 悒 → 果
+    0x6093: 0x4F1A, // 悓 → 会
+    0x6095: 0x4EC0, // 悕 → 什
+    0x6096: 0x754C, // 悖 → 界
+    0x6097: 0x5982, // 悗 → 如
+    0x6098: 0x751F, // 悘 → 生
+    0x609A: 0x4E86, // 悚 → 了
+    0x609B: 0x6700, // 悛 → 最
+    0x609C: 0x591A, // 悜 → 多
+    0x609D: 0x7AEF, // 悝 → 端
+    0x609E: 0x4E00, // 悞 → 一
+    0x60A1: 0x4E2A, // 悡 → 个
+    0x60A2: 0x7684, // 悢 → 的
+    0x60A4: 0x7AD9, // 悤 → 站
+    0x60A5: 0x90FD, // 悥 → 都
+    0x60A7: 0x7F51, // 悧 → 网
+    0x60A9: 0x4EA4, // 悩 → 交
+    0x6128: 0x5230, // 愨 → 到
+  };
+
+  /** 解码 cxSecret 字体混淆的文本 */
+  function decodeCxSecret(text) {
+    if (!text) return text;
+    return text.split('').map(c => {
+      const cp = c.codePointAt(0);
+      return CXSECRET_MAP[cp] ? String.fromCodePoint(CXSECRET_MAP[cp]) : c;
+    }).join('');
+  }
+
   /** 延迟 */
   function delay(ms) {
     return new Promise((r) => setTimeout(r, ms));
@@ -271,6 +303,9 @@
         questionText = parts2.join('\n');
       }
 
+      // 🔓 解码 cxSecret 字体混淆
+      questionText = decodeCxSecret(questionText);
+
       // ── 根据不同题型解析选项和答案 ──
       let options = [];
       let answer = '';
@@ -304,7 +339,7 @@
 
         options = optLabels.map((text, i) => ({
           label: String.fromCharCode(65 + i), // A, B, C, D...
-          text: text,
+          text: decodeCxSecret(text),
         }));
 
         // 正确答案 — 通常在 .rightAnswer 或 .correctAnswer 中

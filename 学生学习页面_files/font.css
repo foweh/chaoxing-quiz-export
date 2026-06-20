@@ -1,0 +1,28 @@
+@charset "utf-8";
+/* CSS Document */
+.fontLabel strong:not(.custom-style) {
+    font-weight: bolder;
+}
+.fontLabel b:not(.custom-style) {
+    font-weight: bolder;
+}
+.fontLabel em:not(.custom-style) {
+    font-style: italic;
+}
+
+.fontLabel i:not(.custom-style) {
+    font-style: italic;
+}
+
+
+/*ol有序列表占位修改*/
+
+ol.list-paddingleft-2 li {
+    list-style-type: decimal;
+    list-style-position: inside;
+}
+
+ol.list-paddingleft-2 li p {
+    display: inline-block !important;
+    float: none;
+}

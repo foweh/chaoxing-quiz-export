@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "canvas": "^3.2.3",
+    "opentype.js": "^2.0.0"
+  }
+}
