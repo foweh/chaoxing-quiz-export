@@ -1,3 +1,15 @@
 node_modules/
 *.ttf
 *.ttf.b64
+
+# 课程内容（版权材料，不提交）
+学生学习页面.html
+学生学习页面_files/
+
+# 第三方脚本原文
+新建文件夹/
+
+# 临时/构建文件
+*.user.txt
+cxsecret.ttf
+cxsecret.ttf.b64
