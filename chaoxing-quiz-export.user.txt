@@ -78,9 +78,7 @@
       .replace(/'/g, '&#39;');
   }
 
-  /** cxSecret 字体混淆解码映射表 (超星学习通常见替代字符) */
-
-  // ═══════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════
   //  cxSecret 动态解码器 (基于 Typr + 远程哈希表)
   // ═══════════════════════════════════════════════════════
   const cxDecoder = {
@@ -182,6 +180,7 @@
   /** 发起 GET 请求（走 GM_xmlhttpRequest 跨域） */
   // ── 内嵌 Typr.js ──
 var Typr$1 = {};
+var Typr = {};
   Typr.parse = function(buff) {
     var bin = Typr._bin;
     var data = new Uint8Array(buff);
@@ -3195,13 +3194,11 @@ var Typr$1 = {};
   //  从页面提取基础参数
   // ═══════════════════════════════════════════════════════════
   function extractBaseParams() {
-    // 从 URL 提取
     const urlParams = new URLSearchParams(location.search);
     CONFIG.courseId = CONFIG.courseId || urlParams.get('courseId') || urlParams.get('courseid');
     CONFIG.clazzId = CONFIG.clazzId || urlParams.get('clazzid') || urlParams.get('clazzId');
     CONFIG.cpi = CONFIG.cpi || urlParams.get('cpi');
 
-    // 从页面隐藏域提取
     const getVal = (id) => {
       const el = document.getElementById(id);
       return el ? el.value : null;
@@ -3209,6 +3206,28 @@ var Typr$1 = {};
     CONFIG.courseId = CONFIG.courseId || getVal('courseId') || getVal('curCourseId');
     CONFIG.clazzId = CONFIG.clazzId || getVal('clazzId');
     CONFIG.cpi = CONFIG.cpi || getVal('cpi');
+  }
+
+  /** 从页面提取课程名称（用于导出文件夹命名） */
+  function getCourseName() {
+    // 尝试多种方式获取课程名
+    // 1. 页面中 courseName 变量
+    const scripts = document.querySelectorAll('script');
+    for (const s of scripts) {
+      const m = s.textContent?.match(/courseName["\s:]+["']([^"']+)["']/);
+      if (m) return m[1];
+    }
+    // 2. 页面标题（可能包含课程名）
+    const title = document.title.replace('学生学习页面', '').trim();
+    if (title && title.length < 30) return title;
+    // 3. 课程目录中第一个章节的 title 属性
+    const firstChapter = document.querySelector('.posCatalog_title');
+    if (firstChapter) {
+      const t = firstChapter.getAttribute('title') || firstChapter.textContent;
+      if (t && t.length < 30) return t.trim();
+    }
+    // 4. 兜底
+    return '课程_' + (CONFIG.courseId || 'unknown');
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -3964,8 +3983,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
         <button class="cx-toggle" id="cxToggle">−</button>
       </div>
       <div class="cx-body">
-        <button class="cx-btn primary" id="cxExportAll">🚀 导出所有章节测验</button>
-        <button class="cx-btn secondary" id="cxDownloadPractice">📝 下载练习HTML</button>
+        <button class="cx-btn primary" id="cxExportAll">📦 一键导出 (JSON+HTML)</button>
+        <button class="cx-btn secondary" id="cxDownloadPractice">📝 仅重新下载练习HTML</button>
         <div class="cx-progress" id="cxProgress">
           <div class="cx-progress-text" id="cxProgressText">准备中...</div>
           <div class="cx-progress-bar"><div class="cx-progress-fill" id="cxProgressFill"></div></div>
@@ -3981,10 +4000,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
       document.getElementById('cxToggle').textContent = panel.classList.contains('collapsed') ? '+' : '−';
     });
 
-    // 缓存最后一次导出的数据
     let lastExportData = null;
+    let lastFolderName = null;
 
-    // 导出所有
+    // 导出所有（JSON + HTML 一起下载到同名文件夹）
     document.getElementById('cxExportAll').addEventListener('click', async () => {
       const btn = document.getElementById('cxExportAll');
       btn.disabled = true;
@@ -3994,13 +4013,31 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
       btn.textContent = '🚀 导出所有章节测验';
 
       if (lastExportData) {
-        // 自动下载 JSON
-        downloadJSON(lastExportData);
-        log('✅ 全部完成！JSON 已下载。点击下方按钮下载练习HTML');
+        const courseName = getCourseName();
+        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const safeName = courseName.replace(/[\/\\:*?"<>|]/g, '_');
+        lastFolderName = safeName + '_' + dateStr;
+
+        // 下载合并 JSON
+        const totalJson = JSON.stringify(lastExportData, null, 2);
+        const jsonBlob = new Blob([totalJson], { type: 'application/json' });
+        const jsonUrl = URL.createObjectURL(jsonBlob);
+        GM_download({ url: jsonUrl, name: lastFolderName + '/章节测验_全部题目.json', saveAs: false });
+        setTimeout(() => URL.revokeObjectURL(jsonUrl), 1000);
+        log('📄 JSON 已保存 → ' + lastFolderName + '/章节测验_全部题目.json');
+
+        // 下载练习 HTML
+        const html = generatePracticeHTML(lastExportData.quizzes);
+        const htmlBlob = new Blob([html], { type: 'text/html;charset=utf-8' });
+        const htmlUrl = URL.createObjectURL(htmlBlob);
+        GM_download({ url: htmlUrl, name: lastFolderName + '/章节测验_循环练习.html', saveAs: false });
+        setTimeout(() => URL.revokeObjectURL(htmlUrl), 1000);
+        log('📝 练习HTML 已保存 → ' + lastFolderName + '/章节测验_循环练习.html');
+        log('✅ 全部完成！文件在下载文件夹 → ' + lastFolderName);
       }
     });
 
-    // 下载练习HTML
+    // 下载练习HTML（单独按钮，用于重新生成）
     document.getElementById('cxDownloadPractice').addEventListener('click', () => {
       if (!lastExportData) {
         alert('请先点击"导出所有章节测验"');
@@ -4011,7 +4048,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = '章节测验_循环练习.html';
+      a.download = (lastFolderName || '章节测验') + '/章节测验_循环练习.html';
       a.click();
       URL.revokeObjectURL(url);
       log('📝 练习HTML已下载');
@@ -4151,40 +4188,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
     };
 
     return exportData;
-  }
-
-  // ═══════════════════════════════════════════════════════════
-  //  下载 JSON
-  // ═══════════════════════════════════════════════════════════
-  function downloadJSON(data) {
-    // 下载总合 JSON
-    const totalJson = JSON.stringify(data, null, 2);
-    const blob = new Blob([totalJson], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'quiz_export_all.json';
-    a.click();
-    URL.revokeObjectURL(url);
-
-    // 也分别下载每个测验的 JSON
-    data.quizzes.forEach((qz, i) => {
-      const singleData = {
-        exportedAt: data.exportedAt,
-        chapterTitle: qz.chapterTitle,
-        quizTitle: qz.quizTitle,
-        workId: qz.workId,
-        questions: qz.questions,
-      };
-      const singleJson = JSON.stringify(singleData, null, 2);
-      const b2 = new Blob([singleJson], { type: 'application/json' });
-      const u2 = URL.createObjectURL(b2);
-      const a2 = document.createElement('a');
-      a2.href = u2;
-      a2.download = 'quiz_' + (i + 1) + '_' + (qz.quizTitle || qz.workId).replace(/[\/\\:*?"<>|]/g, '_') + '.json';
-      a2.click();
-      URL.revokeObjectURL(u2);
-    });
   }
 
   // ═══════════════════════════════════════════════════════════
