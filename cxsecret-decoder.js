@@ -1,315 +1,199 @@
 /**
- * cxSecret 字体解码器
- * 自动识别超星 cxSecret 混淆字体中的字符映射，支持多种参考字体。
+ * cxSecret 字体解码器 v3.0
  * 
- * 工作原理：
- * 1. 解析混淆 TTF，提取 cmap 表（混淆码点 → 字形索引）
- * 2. 为每个字形计算特征指纹（轮廓数、命令数、命令类型直方图、包围盒比例等）
- * 3. 在参考字体中查找最匹配的字形 → 得到真实字符
- * 4. 输出解码映射表
+ * 使用 Typr.js 解析 TTF 字体 → 计算字形路径哈希 → 查表解码
+ * Typr.js 提取自 ABC超星学习通助手 v4.6.0，与远程 table.json 哈希表完全兼容。
+ * 
+ * 用法:
+ *   node cxsecret-decoder.js [cxsecret.ttf] [--table-url <url>] [--out mapping.json]
+ * 
+ * 依赖:
+ *   typr-cxsecret.js  (Typr TrueType 解析库)
  */
 
-const opentype = require('opentype.js');
 const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
+const https = require('https');
+const http = require('http');
+const { Typr } = require('./typr-cxsecret.js');
 
 // ═══════════════════════════════════════════════════════════
-//  字形特征提取
+//  网络请求
 // ═══════════════════════════════════════════════════════════
 
-/**
- * 计算字形的特征指纹
- * 设计为在不同字体（同一字符）之间尽可能一致
- */
-function computeGlyphFingerprint(glyph, fontSize = 72) {
-  const path = glyph.getPath(0, 0, fontSize);
-  const bbox = glyph.getBoundingBox();
-  if (!bbox) return null;
-
-  // 归一化尺寸（相对于 em-square 1000）
-  const w = bbox.x2 - bbox.x1;
-  const h = bbox.y2 - bbox.y1;
-  const aspectRatio = h > 0 ? w / h : 0;
-
-  // 命令类型统计
-  const cmdTypes = {};
-  let contourCount = 0;
-  const cmdSequence = [];
-
-  for (const cmd of path.commands) {
-    const type = cmd.type;
-    cmdTypes[type] = (cmdTypes[type] || 0) + 1;
-    cmdSequence.push(type);
-    if (type === 'M') contourCount++;
-  }
-
-  // 命令类型直方图（归一化）
-  const cmdTypeKeys = ['M', 'L', 'C', 'Q', 'Z'];
-  const cmdHistogram = cmdTypeKeys.map(k => cmdTypes[k] || 0);
-
-  // 命令类型序列的哈希（前 20 个命令足够区分）
-  const cmdTypeSeq = cmdSequence.slice(0, 30).join('');
-  const seqHash = crypto.createHash('md5').update(cmdTypeSeq).digest('hex').substring(0, 8);
-
-  return {
-    contourCount,
-    cmdCount: path.commands.length,
-    cmdHistogram,        // [M, L, C, Q, Z] 计数
-    width: Math.round(w),
-    height: Math.round(h),
-    aspectRatio: Math.round(aspectRatio * 100) / 100,
-    seqHash,
-  };
-}
-
-/**
- * 计算两个指纹之间的距离（越小越相似）
- */
-function fingerprintDistance(a, b) {
-  if (!a || !b) return Infinity;
-
-  let dist = 0;
-
-  // 轮廓数差异（高权重）
-  const contourDiff = Math.abs(a.contourCount - b.contourCount);
-  dist += contourDiff * 100;
-
-  // 命令数比率差异
-  const cmdRatio = Math.max(a.cmdCount, b.cmdCount) / Math.max(1, Math.min(a.cmdCount, b.cmdCount));
-  dist += Math.abs(cmdRatio - 1) * 50;
-
-  // 长宽比差异
-  const arDiff = Math.abs(a.aspectRatio - b.aspectRatio);
-  dist += arDiff * 200;
-
-  // 归一化尺寸差异
-  const wDiff = Math.abs(a.width - b.width) / Math.max(1, Math.max(a.width, b.width));
-  const hDiff = Math.abs(a.height - b.height) / Math.max(1, Math.max(a.height, b.height));
-  dist += (wDiff + hDiff) * 100;
-
-  // 命令直方图相似度（余弦距离）
-  const dotA = Math.sqrt(a.cmdHistogram.reduce((s, v) => s + v * v, 0));
-  const dotB = Math.sqrt(b.cmdHistogram.reduce((s, v) => s + v * v, 0));
-  if (dotA > 0 && dotB > 0) {
-    const cosine = a.cmdHistogram.reduce((s, v, i) => s + v * b.cmdHistogram[i], 0) / (dotA * dotB);
-    dist += (1 - cosine) * 80;
-  }
-
-  return dist;
-}
-
-// ═══════════════════════════════════════════════════════════
-//  主解码逻辑
-// ═══════════════════════════════════════════════════════════
-
-/**
- * 解码 cxSecret 字体
- * @param {Buffer|string} ttfData - TTF 文件 Buffer 或路径
- * @param {Buffer|string} refFontData - 参考字体 Buffer 或路径 (如 SimHei, Microsoft YaHei)
- * @param {Object} options
- * @returns {Object} { mapping: {scrambledCodepoint: realCodepoint}, table: Map, confidence: number }
- */
-function decodeCxSecret(ttfData, refFontData, options = {}) {
-  const ttfBuf = typeof ttfData === 'string' ? fs.readFileSync(ttfData) : ttfData;
-  const refBuf = typeof refFontData === 'string' ? fs.readFileSync(refFontData) : refFontData;
-
-  const cxFont = opentype.parse(ttfBuf.buffer);
-  const refFont = opentype.parse(refBuf.buffer);
-
-  const minConfidence = options.minConfidence || 0.3;
-  const maxCandidates = options.maxCandidates || 5000;
-  const verbose = options.verbose || false;
-
-  // 1. 从 cxSecret 字体提取 cmap 和字形指纹
-  const cxCmap = cxFont.tables.cmap.glyphIndexMap || {};
-  const cxGlyphs = [];
-
-  for (const [codeStr, glyphIdx] of Object.entries(cxCmap)) {
-    const code = parseInt(codeStr);
-    const glyph = cxFont.glyphs.get(glyphIdx);
-    if (!glyph) continue;
-
-    const fp = computeGlyphFingerprint(glyph);
-    if (!fp) continue;
-
-    cxGlyphs.push({
-      scrambledCode: code,
-      scrambledChar: String.fromCodePoint(code),
-      glyphIdx,
-      fingerprint: fp,
-    });
-  }
-
-  if (verbose) console.log(`[cxSecret] 混淆字体包含 ${cxGlyphs.length} 个字符`);
-
-  // 2. 从参考字体提取常见 CJK 字符的字形指纹
-  const refCmap = refFont.tables.cmap.glyphIndexMap || {};
-  const refGlyphs = [];
-
-  // 只考虑常用 CJK 统一表意文字 (U+4E00-U+9FFF) 和 CJK 扩展 A (U+3400-U+4DBF)
-  const cjkRanges = [
-    [0x4E00, 0x9FFF],   // CJK Unified Ideographs
-    [0x3400, 0x4DBF],   // CJK Extension A
-  ];
-
-  let scanned = 0;
-  for (const [codeStr, glyphIdx] of Object.entries(refCmap)) {
-    const code = parseInt(codeStr);
-    // 只考虑 CJK 范围内的字符
-    const inRange = cjkRanges.some(([lo, hi]) => code >= lo && code <= hi);
-    if (!inRange) continue;
-
-    if (scanned >= maxCandidates) break;
-
-    const glyph = refFont.glyphs.get(glyphIdx);
-    if (!glyph) continue;
-
-    const fp = computeGlyphFingerprint(glyph);
-    if (!fp) continue;
-
-    refGlyphs.push({
-      code,
-      char: String.fromCodePoint(code),
-      glyphIdx,
-      fingerprint: fp,
-    });
-    scanned++;
-  }
-
-  if (verbose) console.log(`[cxSecret] 参考字体包含 ${refGlyphs.length} 个 CJK 字符`);
-
-  // 3. 为每个混淆字符找最佳匹配
-  const mapping = {};
-  let totalConfidence = 0;
-
-  for (const cxGlyph of cxGlyphs) {
-    let bestMatch = null;
-    let bestDist = Infinity;
-    let secondBestDist = Infinity;
-
-    for (const refGlyph of refGlyphs) {
-      const dist = fingerprintDistance(cxGlyph.fingerprint, refGlyph.fingerprint);
-      if (dist < bestDist) {
-        secondBestDist = bestDist;
-        bestDist = dist;
-        bestMatch = refGlyph;
-      } else if (dist < secondBestDist) {
-        secondBestDist = dist;
+function httpGet(url) {
+  return new Promise((resolve, reject) => {
+    const mod = url.startsWith('https') ? https : http;
+    mod.get(url, (res) => {
+      if (res.statusCode === 301 || res.statusCode === 302) {
+        return httpGet(res.headers.location).then(resolve).catch(reject);
       }
-    }
+      if (res.statusCode !== 200) {
+        return reject(new Error(`HTTP ${res.statusCode}`));
+      }
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => resolve(data));
+    }).on('error', reject);
+  });
+}
 
-    if (bestMatch) {
-      // 置信度：最佳匹配与第二匹配之间的距离差距
-      const confidence = secondBestDist === Infinity ? 1.0 :
-        Math.min(1.0, (secondBestDist - bestDist) / Math.max(1, bestDist + secondBestDist) * 10);
+// ═══════════════════════════════════════════════════════════
+//  核心：构建解码映射
+// ═══════════════════════════════════════════════════════════
 
-      mapping[cxGlyph.scrambledCode] = {
-        realCode: bestMatch.code,
-        realChar: bestMatch.char,
-        confidence: Math.round(confidence * 100) / 100,
-        distance: Math.round(bestDist * 100) / 100,
-      };
-      totalConfidence += confidence;
+/**
+ * 从 cxSecret TTF 字体和哈希查找表构建解码映射
+ * 
+ * 算法（与 ABC 脚本一致）：
+ *   1. 遍历所有 CJK 统一表意文字 (U+4E00-U+9FA5)
+ *   2. 检查 cxSecret 字体是否有该码点的字形
+ *   3. 若有，用 Typr 获取字形路径
+ *   4. md5(JSON.stringify(path)).slice(24) → 8字符哈希
+ *   5. 查 table.json 获取真实 Unicode 码点
+ * 
+ * @param {Uint8Array} ttfData - cxSecret TTF 字体数据
+ * @param {Object} lookupTable - { hash8: realCodepoint, ... }
+ * @returns {Object} { scrambledCodepoint: realCodepoint, ... }
+ */
+function buildDecryptionTable(ttfData, lookupTable) {
+  const fonts = Typr.parse(ttfData.buffer);
+  const font = fonts[0];
+  const match = {};
+
+  const CHINESE_CHAR_START = 0x4E00; // 19968  CJK 统一表意文字起始
+  const CHINESE_CHAR_END   = 0x9FA5; // 40869  常用 CJK 结束
+
+  for (let charCode = CHINESE_CHAR_START; charCode <= CHINESE_CHAR_END; charCode++) {
+    const glyphIdx = Typr.U.codeToGlyph(font, charCode);
+    if (!glyphIdx) continue;
+
+    const path = Typr.U.glyphToPath(font, glyphIdx);
+    const hash = crypto.createHash('md5').update(JSON.stringify(path)).digest('hex').slice(24);
+    const realCode = lookupTable[hash];
+
+    if (realCode !== undefined) {
+      match[charCode] = realCode;
     }
   }
 
-  const avgConfidence = cxGlyphs.length > 0 ? totalConfidence / cxGlyphs.length : 0;
-
-  if (verbose) {
-    console.log(`[cxSecret] 平均置信度: ${(avgConfidence * 100).toFixed(1)}%`);
-    console.log('[cxSecret] 映射表:');
-    for (const [sc, info] of Object.entries(mapping)) {
-      const sChar = String.fromCodePoint(parseInt(sc));
-      console.log(`  U+${parseInt(sc).toString(16).toUpperCase()} ${sChar} → U+${info.realCode.toString(16).toUpperCase()} ${info.realChar} (置信度: ${(info.confidence*100).toFixed(0)}%)`);
-    }
-  }
-
-  return {
-    mapping,
-    scrambledCount: cxGlyphs.length,
-    refCount: refGlyphs.length,
-    avgConfidence,
-  };
+  return match;
 }
 
 /**
- * 应用解码映射到文本
+ * 使用解码表解码文本
  */
-function decodeText(text, mapping) {
-  if (!text || !mapping) return text;
+function decodeText(text, decryptionTable) {
+  if (!text || !decryptionTable) return text;
   return text.split('').map(c => {
     const cp = c.codePointAt(0);
-    const info = mapping[cp];
-    return info ? info.realChar : c;
+    return decryptionTable[cp] ? String.fromCodePoint(decryptionTable[cp]) : c;
   }).join('');
 }
 
-/**
- * 将映射转换为简单的 {scrambledCodepoint: realCodepoint} 格式
- */
-function mappingToSimple(mapping) {
-  const simple = {};
-  for (const [sc, info] of Object.entries(mapping)) {
-    simple[parseInt(sc)] = info.realCode;
+// ═══════════════════════════════════════════════════════════
+//  远程查找表
+// ═══════════════════════════════════════════════════════════
+
+const DEFAULT_TABLE_URLS = [
+  'https://www.forestpolice.org/ttf/2.0/table.json',
+  'https://cs.dkjdda.top/table.json',
+];
+
+async function fetchLookupTable(customUrl) {
+  const urls = customUrl ? [customUrl, ...DEFAULT_TABLE_URLS] : DEFAULT_TABLE_URLS;
+
+  for (const url of urls) {
+    try {
+      console.log(`[decode] 下载查找表: ${url}`);
+      const json = await httpGet(url);
+      const table = JSON.parse(json);
+      console.log(`[decode] 查找表加载成功，${Object.keys(table).length} 个条目`);
+      return table;
+    } catch (e) {
+      console.warn(`[decode] 下载失败: ${url} - ${e.message}`);
+    }
   }
-  return simple;
+  return null;
 }
 
 // ═══════════════════════════════════════════════════════════
-//  已知映射（基于常见 cxSecret 字体）
+//  CLI
 // ═══════════════════════════════════════════════════════════
 
-// 当自动匹配置信度不足时，可手动补充
-const KNOWN_MAPPINGS = {
-  // 此处的映射可在遇到新字体时扩充
-};
-
-// ═══════════════════════════════════════════════════════════
-//  导出
-// ═══════════════════════════════════════════════════════════
-
-module.exports = {
-  decodeCxSecret,
-  decodeText,
-  mappingToSimple,
-  computeGlyphFingerprint,
-  fingerprintDistance,
-  KNOWN_MAPPINGS,
-};
-
-// ═══════════════════════════════════════════════════════════
-//  CLI 入口
-// ═══════════════════════════════════════════════════════════
-if (require.main === module) {
+async function main() {
   const args = process.argv.slice(2);
-  const ttfPath = args[0] || 'cxsecret.ttf';
-  const refPath = args[1] || 'C:/Windows/Fonts/simhei.ttf';
-  const verbose = !args.includes('--quiet');
+  const ttfPath = args.find(a => !a.startsWith('--') && /\.(ttf|otf)$/i.test(a));
+  const tableUrlIdx = args.indexOf('--table-url');
+  const tableUrl = tableUrlIdx >= 0 ? args[tableUrlIdx + 1] : null;
+  const outIdx = args.indexOf('--out');
+  const outPath = outIdx >= 0 ? args[outIdx + 1] : null;
+  const verbose = args.includes('--verbose') || args.includes('-v');
+
+  if (!ttfPath) {
+    console.error('用法: node cxsecret-decoder.js <font.ttf> [--table-url <url>] [--out mapping.json]');
+    process.exit(1);
+  }
 
   if (!fs.existsSync(ttfPath)) {
-    console.error('错误: 找不到 cxSecret 字体文件:', ttfPath);
-    console.error('用法: node cxsecret-decoder.js <cxsecret.ttf> [参考字体.ttf]');
+    console.error('字体文件不存在:', ttfPath);
     process.exit(1);
   }
 
-  if (!fs.existsSync(refPath)) {
-    console.error('错误: 找不到参考字体文件:', refPath);
-    console.error('请指定一个包含 CJK 字符的 TrueType 字体');
+  console.log('[decode] 加载字体:', ttfPath);
+  const ttfBuf = fs.readFileSync(ttfPath);
+
+  console.log('[decode] 获取查找表...');
+  const lookupTable = await fetchLookupTable(tableUrl);
+  if (!lookupTable) {
+    console.error('[decode] 无法获取查找表，请检查网络或使用 --table-url 指定');
     process.exit(1);
   }
 
-  const result = decodeCxSecret(ttfPath, refPath, { verbose });
+  console.log('[decode] 构建解码映射 (遍历 U+4E00-U+9FA5)...');
+  const ttfData = new Uint8Array(ttfBuf);
+  const mapping = buildDecryptionTable(ttfData, lookupTable);
 
-  if (result.avgConfidence < 0.5) {
-    console.log(`\n⚠️  平均置信度较低 (${(result.avgConfidence*100).toFixed(1)}%)，建议检查映射结果`);
+  console.log(`\n解码映射表 (${Object.keys(mapping).length} 个字符):`);
+  const lines = [];
+  for (const [sc, real] of Object.entries(mapping)) {
+    const sChar = String.fromCodePoint(parseInt(sc));
+    const rChar = String.fromCodePoint(real);
+    const line = `  U+${parseInt(sc).toString(16).toUpperCase()} ${sChar} → U+${real.toString(16).toUpperCase()} ${rChar}`;
+    console.log(line);
+    lines.push(line);
   }
 
-  // 输出简单映射表
-  console.log('\n// 复制此映射表到你的代码中:');
+  if (Object.keys(mapping).length === 0) {
+    console.warn('\n⚠️  未找到映射。可能此字体不是 cxSecret 字体，或查找表版本不匹配。');
+    return;
+  }
+
+  // 输出可直接使用的映射代码
+  console.log('\n// 复制到你的 extract_quiz.js 或 Tampermonkey 脚本中:');
   console.log('const CXSECRET_MAPPING = {');
-  for (const [sc, info] of Object.entries(result.mapping)) {
-    console.log(`  0x${parseInt(sc).toString(16).toUpperCase()}: 0x${info.realCode.toString(16).toUpperCase()}, // ${String.fromCodePoint(parseInt(sc))} → ${info.realChar} (${(info.confidence*100).toFixed(0)}%)`);
+  for (const [sc, real] of Object.entries(mapping)) {
+    console.log(`  0x${parseInt(sc).toString(16).toUpperCase()}: 0x${real.toString(16).toUpperCase()}, // ${String.fromCodePoint(parseInt(sc))} → ${String.fromCodePoint(real)}`);
   }
   console.log('};');
+
+  // 保存 JSON
+  if (outPath) {
+    // 保存为简单的 {scrambledHex: realHex} 格式
+    const exportMap = {};
+    for (const [sc, real] of Object.entries(mapping)) {
+      exportMap['0x' + parseInt(sc).toString(16).toUpperCase()] = '0x' + real.toString(16).toUpperCase();
+    }
+    fs.writeFileSync(outPath, JSON.stringify(exportMap, null, 2), 'utf-8');
+    console.log(`\n💾 映射表已保存到: ${outPath}`);
+  }
 }
+
+if (require.main === module) {
+  main().catch(e => {
+    console.error(e);
+    process.exit(1);
+  });
+}
+
+module.exports = { buildDecryptionTable, decodeText, fetchLookupTable, httpGet };
