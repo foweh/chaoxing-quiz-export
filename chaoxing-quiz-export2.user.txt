@@ -4018,22 +4018,23 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
         const safeName = courseName.replace(/[\/\\:*?"<>|]/g, '_');
         lastFolderName = safeName + '_' + dateStr;
 
-        // 下载合并 JSON
+        // 下载合并 JSON（文件名前缀统一，在下载目录中自然归组）
+        const prefix = lastFolderName + '_';
         const totalJson = JSON.stringify(lastExportData, null, 2);
         const jsonBlob = new Blob([totalJson], { type: 'application/json' });
         const jsonUrl = URL.createObjectURL(jsonBlob);
-        GM_download({ url: jsonUrl, name: lastFolderName + '/章节测验_全部题目.json', saveAs: false });
+        GM_download({ url: jsonUrl, name: prefix + '章节测验_全部题目.json', saveAs: false });
         setTimeout(() => URL.revokeObjectURL(jsonUrl), 1000);
-        log('📄 JSON 已保存 → ' + lastFolderName + '/章节测验_全部题目.json');
+        log('📄 已保存: ' + prefix + '章节测验_全部题目.json');
 
         // 下载练习 HTML
         const html = generatePracticeHTML(lastExportData.quizzes);
         const htmlBlob = new Blob([html], { type: 'text/html;charset=utf-8' });
         const htmlUrl = URL.createObjectURL(htmlBlob);
-        GM_download({ url: htmlUrl, name: lastFolderName + '/章节测验_循环练习.html', saveAs: false });
+        GM_download({ url: htmlUrl, name: prefix + '章节测验_循环练习.html', saveAs: false });
         setTimeout(() => URL.revokeObjectURL(htmlUrl), 1000);
-        log('📝 练习HTML 已保存 → ' + lastFolderName + '/章节测验_循环练习.html');
-        log('✅ 全部完成！文件在下载文件夹 → ' + lastFolderName);
+        log('📝 已保存: ' + prefix + '章节测验_循环练习.html');
+        log('✅ 全部完成！两个文件以 ' + prefix + ' 开头，在下载目录中排在一起');
       }
     });
 
@@ -4051,7 +4052,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
       a.download = (lastFolderName || '章节测验') + '/章节测验_循环练习.html';
       a.click();
       URL.revokeObjectURL(url);
-      log('📝 练习HTML已下载');
+      log('📝 练习HTML已下载: ' + (lastFolderName || '章节测验') + '_章节测验_循环练习.html');
     });
 
     // 辅助函数
