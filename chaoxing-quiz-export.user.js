@@ -20,6 +20,8 @@
 (function () {
   'use strict';
 
+  console.log('[CX Export] 脚本已加载 v2.0.0');
+
   // ═══════════════════════════════════════════════════════════
   //  配置
   // ═══════════════════════════════════════════════════════════
@@ -4189,11 +4191,27 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Micr
   //  入口
   // ═══════════════════════════════════════════════════════════
   function init() {
-    // 等待页面加载完成后再创建面板
+    console.log('[CX Export] 脚本初始化，readyState=' + document.readyState);
+
+    function tryCreatePanel() {
+      if (document.body) {
+        console.log('[CX Export] body 就绪，创建面板...');
+        try {
+          createPanel();
+          console.log('[CX Export] 面板创建成功');
+        } catch (e) {
+          console.error('[CX Export] 面板创建失败:', e);
+        }
+      } else {
+        console.warn('[CX Export] body 未就绪，100ms 后重试...');
+        setTimeout(tryCreatePanel, 100);
+      }
+    }
+
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => setTimeout(createPanel, 1500));
+      document.addEventListener('DOMContentLoaded', () => setTimeout(tryCreatePanel, 800));
     } else {
-      setTimeout(createPanel, 1500);
+      setTimeout(tryCreatePanel, 800);
     }
   }
 
