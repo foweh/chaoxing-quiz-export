@@ -2,7 +2,7 @@
 // @name         超星学习通 - 章节测验导出 + 循环练习
 // @namespace    https://mooc1.chaoxing.com
 // @version      2.0.0
-// @description  一键导出所有章节测验题目为 JSON + 生成完整练习HTML（错题本+导入去重） + 自动解码 cxSecret 字体混淆
+// @description  一键导出所有章节测验题目为 JSON + 生成独立的循环练习 HTML 页面 + 自动解码 cxSecret 字体混淆
 // @author       You
 // @match        https://mooc1.chaoxing.com/mycourse/studentstudy*
 // @match        https://mooc1.chaoxing.com/mooc-ans/knowledge/cards*
@@ -3474,7 +3474,7 @@ var Typr = {};
   }
 
   // ═══════════════════════════════════════════════════════════
-  //  生成完整功能 HTML（练习 + 错题本 + 导入去重）
+  //  生成循环练习 HTML（完全独立，单文件）
   // ═══════════════════════════════════════════════════════════
   function generatePracticeHTML(allQuizzes) {
     // 将所有题目扁平化，附带上章节信息
@@ -3493,6 +3493,7 @@ var Typr = {};
 
     // 安全转义：防止 JSON 中包含 </script> 破坏 HTML
     const quizDataJson = JSON.stringify(allQuizzes).replace(/<\//g, '<\\/');
+    // 题目数据也嵌入
     const questionsJson = JSON.stringify(allQuestions).replace(/<\//g, '<\\/');
 
     return `<!DOCTYPE html>
@@ -3500,352 +3501,425 @@ var Typr = {};
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>章节测验 · 练习 + 错题本</title>
+<title>章节测验 · 循环练习</title>
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#f5f6fa;--card:#fff;--text:#2d3436;--text2:#636e72;--primary:#6c5ce7;--primary-l:#a29bfe;--suc:#00b894;--dng:#d63031;--warn:#fdcb6e;--bdr:#dfe6e9;--sh:0 2px 12px rgba(0,0,0,.08);--r:12px;--t:.2s}
-body.dark{--bg:#1a1a2e;--card:#16213e;--text:#eee;--text2:#a4b0be;--bdr:#2d3436;--sh:0 2px 12px rgba(0,0,0,.3)}
-body{font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.6;transition:background var(--t),color var(--t)}
-.tab-bar{display:flex;background:var(--card);border-bottom:2px solid var(--bdr);position:sticky;top:0;z-index:100;box-shadow:var(--sh)}
-.tab-btn{flex:1;padding:14px;text-align:center;font-size:15px;font-weight:600;cursor:pointer;border:none;background:transparent;color:var(--text2);transition:all var(--t);position:relative}
-.tab-btn:hover{color:var(--primary)}
-.tab-btn.active{color:var(--primary)}
-.tab-btn.active::after{content:'';position:absolute;bottom:-2px;left:10%;width:80%;height:3px;background:var(--primary);border-radius:3px}
-.tab-content{display:none}
-.tab-content.active{display:block}
-.topbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:12px 20px;background:var(--card);border-bottom:1px solid var(--bdr)}
-.topbar .title{font-size:18px;font-weight:700;color:var(--primary)}
-.topbar .stats{font-size:13px;color:var(--text2)}
-.topbar .controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.topbar button,.topbar select{padding:6px 14px;border:1px solid var(--bdr);border-radius:8px;background:var(--card);color:var(--text);cursor:pointer;font-size:13px;transition:all var(--t)}
-.topbar button:hover{border-color:var(--primary);color:var(--primary)}
-.topbar button.active{background:var(--primary);color:#fff;border-color:var(--primary)}
-.topbar select{min-width:130px}
-.progress-bar{width:100%;height:4px;background:var(--bdr);border-radius:2px;overflow:hidden}
-.progress-bar .fill{height:100%;background:var(--primary);transition:width .3s}
-.main{padding:24px 20px 80px;max-width:860px;margin:0 auto}
-.q-card{background:var(--card);border-radius:var(--r);padding:28px 30px;box-shadow:var(--sh);margin-bottom:20px;transition:all var(--t)}
-.q-card.correct{border-left:4px solid var(--suc)}
-.q-card.wrong{border-left:4px solid var(--dng)}
-.q-hdr{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
-.q-bdg{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
-.q-bdg.sg{background:#e8f5e9;color:#2e7d32}
-.q-bdg.mu{background:#fff3e0;color:#e65100}
-.q-bdg.jd{background:#e3f2fd;color:#1565c0}
-.q-bdg.sh{background:#fce4ec;color:#c62828}
-.q-bdg.fl{background:#f3e5f5;color:#6a1b9a}
-.q-meta{font-size:12px;color:var(--text2)}
-.q-text{font-size:16px;line-height:1.8;margin-bottom:20px;white-space:pre-wrap;word-break:break-word}
-.opts{display:flex;flex-direction:column;gap:10px}
-.opt{display:flex;align-items:flex-start;gap:12px;padding:12px 16px;border:2px solid var(--bdr);border-radius:10px;cursor:pointer;transition:all var(--t);font-size:15px;line-height:1.5}
-.opt:hover{border-color:var(--primary-l);background:rgba(108,92,231,.04)}
-.opt.sel{border-color:var(--primary);background:rgba(108,92,231,.08)}
-.opt.ca{border-color:var(--suc)!important;background:rgba(0,184,148,.08)!important}
-.opt.wa{border-color:var(--dng)!important;background:rgba(214,48,49,.08)!important}
-.opt .ol{font-weight:700;font-size:14px;min-width:24px;color:var(--primary)}
-.opt .ot{flex:1}
-.ans-sec{margin-top:20px;display:none}
-.ans-sec.show{display:block}
-.ans-box{padding:16px 20px;border-radius:10px;background:rgba(0,184,148,.06);border:1px solid var(--suc)}
-.ans-box .al{font-weight:700;color:var(--suc);margin-bottom:6px}
-.ans-box .at{font-size:15px;white-space:pre-wrap;word-break:break-word;color:var(--text)}
-.act-bar{display:flex;justify-content:center;align-items:center;gap:16px;margin-top:20px;flex-wrap:wrap}
-.act-bar button{padding:10px 28px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;border:none;transition:all var(--t);display:flex;align-items:center;gap:6px}
-.btn-p{background:var(--primary);color:#fff}
-.btn-p:hover{opacity:.85;transform:translateY(-1px)}
-.btn-o{background:transparent;border:2px solid var(--primary)!important;color:var(--primary)}
-.btn-o:hover{background:var(--primary);color:#fff}
-.btn-s{background:var(--suc);color:#fff}
-.btn-d{background:transparent;border:2px solid var(--dng)!important;color:var(--dng)}
-.key-h{font-size:11px;opacity:.6;margin-left:4px}
-.wrong-list{padding:20px;max-width:860px;margin:0 auto}
-.wrong-item{background:var(--card);border-radius:var(--r);padding:20px 24px;box-shadow:var(--sh);margin-bottom:16px;border-left:4px solid var(--dng);cursor:pointer;transition:all var(--t)}
-.wrong-item:hover{transform:translateX(4px)}
-.wrong-item .wi-q{font-size:15px;font-weight:600;margin-bottom:6px;color:var(--text)}
-.wrong-item .wi-meta{font-size:12px;color:var(--text2)}
-.wrong-item .wi-ans{margin-top:8px;font-size:13px;color:var(--suc)}
-.wrong-empty{text-align:center;padding:60px 20px;color:var(--text2);font-size:16px}
-.import-zone{max-width:600px;margin:30px auto;padding:20px}
-.import-drop{border:3px dashed var(--bdr);border-radius:var(--r);padding:60px 30px;text-align:center;transition:all var(--t);cursor:pointer}
-.import-drop:hover,.import-drop.dragover{border-color:var(--primary);background:rgba(108,92,231,.04)}
-.import-drop .ic{font-size:48px;margin-bottom:16px}
-.import-drop .it{font-size:16px;color:var(--text2);margin-bottom:8px}
-.import-drop .is{font-size:13px;color:var(--text2);opacity:.7}
-.import-result{margin-top:20px;padding:16px 20px;border-radius:var(--r);display:none}
-.import-result.show{display:block}
-.import-result.ok{background:rgba(0,184,148,.08);border:1px solid var(--suc);color:var(--suc)}
-.import-result.err{background:rgba(214,48,49,.08);border:1px solid var(--dng);color:var(--dng)}
-.import-result .ir-count{font-size:24px;font-weight:700;margin-bottom:4px}
-.import-result .ir-detail{font-size:14px;opacity:.9}
-.import-stats{margin-top:16px;padding:16px 20px;background:var(--card);border-radius:var(--r);box-shadow:var(--sh);display:flex;justify-content:space-around;flex-wrap:wrap;gap:12px}
-.import-stats .is-item{text-align:center}
-.import-stats .is-num{font-size:28px;font-weight:700;color:var(--primary)}
-.import-stats .is-label{font-size:13px;color:var(--text2);margin-top:4px}
-.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:999;padding:10px 24px;border-radius:20px;font-size:14px;color:#fff;background:#2d3436;opacity:0;transition:opacity .3s;pointer-events:none}
-.toast.show{opacity:1}
-@media(max-width:600px){.main{padding:16px 10px 60px}.q-card{padding:20px 16px}.topbar{padding:10px 12px}.topbar .title{font-size:15px}}
+/* ═══ 基础重置 ═══ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f5f6fa;--card-bg:#fff;--text:#2d3436;--text-secondary:#636e72;
+  --primary:#6c5ce7;--primary-light:#a29bfe;--success:#00b894;--danger:#d63031;
+  --warning:#fdcb6e;--border:#dfe6e9;--shadow:0 2px 12px rgba(0,0,0,.08);
+  --radius:12px;--transition:.2s ease;
+}
+body.dark{
+  --bg:#1a1a2e;--card-bg:#16213e;--text:#eee;--text-secondary:#a4b0be;
+  --border:#2d3436;--shadow:0 2px 12px rgba(0,0,0,.3);
+}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.6;transition:background var(--transition),color var(--transition);}
+
+/* ═══ 顶部导航 ═══ */
+.topbar{
+  position:sticky;top:0;z-index:100;background:var(--card-bg);border-bottom:1px solid var(--border);
+  padding:12px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
+  box-shadow:var(--shadow);
+}
+.topbar .title{font-size:18px;font-weight:700;color:var(--primary);}
+.topbar .stats{font-size:13px;color:var(--text-secondary);}
+.topbar .controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.topbar button,.topbar select{
+  padding:6px 14px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);
+  color:var(--text);cursor:pointer;font-size:13px;transition:all var(--transition);
+}
+.topbar button:hover{border-color:var(--primary);color:var(--primary);}
+.topbar button.active{background:var(--primary);color:#fff;border-color:var(--primary);}
+.topbar select{min-width:140px;}
+.progress-bar{width:100%;height:4px;background:var(--border);border-radius:2px;overflow:hidden;}
+.progress-bar .fill{height:100%;background:var(--primary);transition:width .3s;}
+
+/* ═══ 主内容区 ═══ */
+.main{padding:24px 20px 80px;max-width:860px;margin:0 auto;}
+.question-card{background:var(--card-bg);border-radius:var(--radius);padding:28px 30px;box-shadow:var(--shadow);margin-bottom:20px;transition:all var(--transition);}
+.question-card.correct{border-left:4px solid var(--success);}
+.question-card.wrong{border-left:4px solid var(--danger);}
+.question-card.revealed{border-left:4px solid var(--primary);}
+.q-header{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;}
+.q-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;}
+.q-badge.single{background:#e8f5e9;color:#2e7d32;}
+.q-badge.multi{background:#fff3e0;color:#e65100;}
+.q-badge.judge{background:#e3f2fd;color:#1565c0;}
+.q-badge.short{background:#fce4ec;color:#c62828;}
+.q-badge.fill{background:#f3e5f5;color:#6a1b9a;}
+.q-meta{font-size:12px;color:var(--text-secondary);}
+.q-text{font-size:16px;line-height:1.8;margin-bottom:20px;white-space:pre-wrap;word-break:break-word;}
+
+/* ═══ 选项 ═══ */
+.options{display:flex;flex-direction:column;gap:10px;}
+.option{
+  display:flex;align-items:flex-start;gap:12px;padding:12px 16px;border:2px solid var(--border);
+  border-radius:10px;cursor:pointer;transition:all var(--transition);font-size:15px;line-height:1.5;
+}
+.option:hover{border-color:var(--primary-light);background:rgba(108,92,231,.04);}
+.option.selected{border-color:var(--primary);background:rgba(108,92,231,.08);}
+.option.correct-answer{border-color:var(--success)!important;background:rgba(0,184,148,.08)!important;}
+.option.wrong-answer{border-color:var(--danger)!important;background:rgba(214,48,49,.08)!important;}
+.option .opt-label{font-weight:700;font-size:14px;min-width:24px;color:var(--primary);}
+.option .opt-text{flex:1;}
+
+/* ═══ 答案区 ═══ */
+.answer-section{margin-top:20px;display:none;}
+.answer-section.show{display:block;}
+.answer-box{padding:16px 20px;border-radius:10px;background:rgba(0,184,148,.06);border:1px solid var(--success);}
+.answer-box .ans-label{font-weight:700;color:var(--success);margin-bottom:6px;}
+.answer-box .ans-text{font-size:15px;white-space:pre-wrap;word-break:break-word;color:var(--text);}
+
+/* ═══ 底部操作 ═══ */
+.action-bar{display:flex;justify-content:center;align-items:center;gap:16px;margin-top:20px;flex-wrap:wrap;}
+.action-bar button{
+  padding:10px 28px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;
+  border:none;transition:all var(--transition);display:flex;align-items:center;gap:6px;
+}
+.btn-primary{background:var(--primary);color:#fff;}
+.btn-primary:hover{opacity:.85;transform:translateY(-1px);}
+.btn-outline{background:transparent;border:2px solid var(--primary)!important;color:var(--primary);}
+.btn-outline:hover{background:var(--primary);color:#fff;}
+.btn-success{background:var(--success);color:#fff;}
+.btn-danger{background:transparent;border:2px solid var(--danger)!important;color:var(--danger);}
+.key-hint{font-size:11px;opacity:.6;margin-left:4px;}
+
+/* ═══ Toast ═══ */
+.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:999;padding:10px 24px;
+  border-radius:20px;font-size:14px;color:#fff;background:#2d3436;opacity:0;transition:opacity .3s;}
+.toast.show{opacity:1;}
+
+/* ═══ 响应式 ═══ */
+@media(max-width:600px){
+  .main{padding:16px 10px 60px;}
+  .question-card{padding:20px 16px;}
+  .topbar{padding:10px 12px;}
+  .topbar .title{font-size:15px;}
+}
 </style>
 </head>
 <body>
-
-<div class="tab-bar" id="tabBar">
-  <button class="tab-btn active" data-tab="practice">📝 练习模式</button>
-  <button class="tab-btn" data-tab="wrong">❌ 错题本</button>
-  <button class="tab-btn" data-tab="import">📥 导入题目</button>
-</div>
-
-<div class="tab-content active" id="tabPractice">
-  <div class="topbar">
-    <span class="title">📝 练习</span>
-    <span class="stats" id="stats">加载中...</span>
-    <div class="controls">
-      <select id="chapterFilter"><option value="all">📂 全部章节</option></select>
-      <select id="typeFilter"><option value="all">📋 全部题型</option>
-        <option value="\u5355\u9009\u9898">单选题</option><option value="\u591a\u9009\u9898">多选题</option>
-        <option value="\u5224\u65ad\u9898">判断题</option><option value="\u7b80\u7b54\u9898">简答题</option>
-        <option value="\u586b\u7a7a\u9898">填空题</option>
-      </select>
-      <button id="btnRandom" title="随机打乱">🔀 随机</button>
-      <button id="btnReset" title="重置进度">🔄 重置</button>
-      <button id="btnDark" title="夜间模式">🌓</button>
-    </div>
-  </div>
-  <div class="progress-bar"><div class="fill" id="progressFill" style="width:0%"></div></div>
-  <div class="main" id="main"></div>
-</div>
-
-<div class="tab-content" id="tabWrong">
-  <div class="topbar">
-    <span class="title">❌ 错题本</span>
-    <span class="stats" id="wrongStats">加载中...</span>
-    <div class="controls">
-      <button id="btnPracticeWrong" style="padding:6px 14px;font-size:13px;border:none;border-radius:8px;background:var(--primary);color:#fff;cursor:pointer">📝 练习错题</button>
-      <button id="btnClearWrong" style="padding:6px 14px;font-size:13px;border:2px solid var(--dng);border-radius:8px;background:transparent;color:var(--dng);cursor:pointer">🗑 清空错题</button>
-      <button id="btnWrongBack" style="display:none;padding:6px 14px;font-size:13px;cursor:pointer;border:1px solid var(--bdr);border-radius:8px;background:var(--card);color:var(--text)">← 返回</button>
-    </div>
-  </div>
-  <div class="main" id="wrongMain" style="padding-top:16px"></div>
-</div>
-
-<div class="tab-content" id="tabImport">
-  <div class="import-zone">
-    <div class="import-stats" id="importStats">
-      <div class="is-item"><div class="is-num" id="isTotal">0</div><div class="is-label">总题目</div></div>
-      <div class="is-item"><div class="is-num" id="isWrong">0</div><div class="is-label">错题数</div></div>
-      <div class="is-item"><div class="is-num" id="isCorrect">0</div><div class="is-label">答对数</div></div>
-      <div class="is-item"><div class="is-num" id="isChapters">0</div><div class="is-label">章节数</div></div>
-    </div>
-    <div class="import-drop" id="importDrop">
-      <div class="ic">📥</div>
-      <div class="it">拖放 JSON 文件到此处，或点击选择</div>
-      <div class="is">支持 chaoxing-quiz-export 导出的 JSON 格式</div>
-    </div>
-    <input type="file" id="importFileInput" accept=".json" style="display:none">
-    <div class="import-result" id="importResult">
-      <div class="ir-count" id="irCount"></div>
-      <div class="ir-detail" id="irDetail"></div>
-    </div>
+<div class="topbar" id="topbar">
+  <span class="title">📝 章节测验练习</span>
+  <span class="stats" id="stats">加载中...</span>
+  <div class="controls">
+    <select id="chapterFilter"><option value="all">📂 全部章节</option></select>
+    <select id="typeFilter">
+      <option value="all">📋 全部题型</option>
+      <option value="单选题">单选题</option>
+      <option value="多选题">多选题</option>
+      <option value="判断题">判断题</option>
+      <option value="简答题">简答题</option>
+      <option value="填空题">填空题</option>
+    </select>
+    <button id="btnRandom" title="随机打乱">🔀 随机</button>
+    <button id="btnReset" title="重置进度">🔄 重置</button>
+    <button id="btnDark" title="夜间模式">🌓</button>
   </div>
 </div>
-
+<div class="progress-bar"><div class="fill" id="progressFill" style="width:0%"></div></div>
+<div class="main" id="main"></div>
 <div class="toast" id="toast"></div>
 
 <script>
 (function(){
-  var QUIZ_DATA = ${quizDataJson};
-  var EMBEDDED_QUESTIONS = ${questionsJson};
+  const QUIZ_DATA = ${quizDataJson};
+  const ALL_QUESTIONS = ${questionsJson};
 
-  var ALL_QUESTIONS = EMBEDDED_QUESTIONS.slice();
-  var currentIndex = 0;
-  var filteredQuestions = ALL_QUESTIONS.slice();
-  var correctCount = parseInt(localStorage.getItem('cx_practice_correct') || '0');
-  var totalCount = parseInt(localStorage.getItem('cx_practice_total') || '0');
-  var answeredMap = JSON.parse(localStorage.getItem('cx_practice_answered') || '{}');
-  var wrongMap = JSON.parse(localStorage.getItem('cx_wrong_map') || '{}');
-  var wrongPracticeMode = false;
-  var wrongPracticeQuestions = [];
-  var wrongSelected = null, wrongJudged = false;
-  var selectedOption = null, judged = false;
+  // ═══ 状态 ═══
+  let currentIndex = 0;
+  let filteredQuestions = [...ALL_QUESTIONS];
+  let showAnswer = false;
+  let selectedOption = null;
+  let judged = false;
+  let correctCount = parseInt(localStorage.getItem('cx_practice_correct') || '0');
+  let totalCount = parseInt(localStorage.getItem('cx_practice_total') || '0');
+  const answeredMap = JSON.parse(localStorage.getItem('cx_practice_answered') || '{}');
 
-  function $(id){return document.getElementById(id)}
-  var $main=$('main'),$stats=$('stats'),$progress=$('progressFill');
-  var $cf=$('chapterFilter'),$tf=$('typeFilter'),$br=$('btnRandom'),$brs=$('btnReset'),$bd=$('btnDark'),$tt=$('toast');
-  var $wm=$('wrongMain'),$ws=$('wrongStats'),$bpw=$('btnPracticeWrong'),$bcw=$('btnClearWrong'),$bwb=$('btnWrongBack');
-  var $id=$('importDrop'),$ifi=$('importFileInput'),$ir=$('importResult'),$irc=$('irCount'),$ird=$('irDetail');
-  var $ist=$('isTotal'),$isw=$('isWrong'),$isc=$('isCorrect'),$isch=$('isChapters');
+  // ═══ DOM 引用 ═══
+  const $main = document.getElementById('main');
+  const $stats = document.getElementById('stats');
+  const $progress = document.getElementById('progressFill');
+  const $chapterFilter = document.getElementById('chapterFilter');
+  const $typeFilter = document.getElementById('typeFilter');
+  const $btnRandom = document.getElementById('btnRandom');
+  const $btnReset = document.getElementById('btnReset');
+  const $btnDark = document.getElementById('btnDark');
+  const $toast = document.getElementById('toast');
 
-  document.querySelectorAll('.tab-btn').forEach(function(btn){
-    btn.addEventListener('click',function(){
-      document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active')});
-      document.querySelectorAll('.tab-content').forEach(function(c){c.classList.remove('active')});
-      this.classList.add('active');
-      $(this.dataset.tab==='practice'?'tabPractice':this.dataset.tab==='wrong'?'tabWrong':'tabImport').classList.add('active');
-      if(this.dataset.tab==='practice'){wrongPracticeMode=false;applyFilters();render()}
-      if(this.dataset.tab==='wrong')renderWrongList();
-      if(this.dataset.tab==='import')updateImportStats();
+  // ═══ 初始化 ═══
+  function init() {
+    // 填充章节筛选
+    const chapters = [...new Set(ALL_QUESTIONS.map(q => q.chapterTitle || q.quizTitle))];
+    chapters.forEach(ch => {
+      if (ch) {
+        const opt = document.createElement('option');
+        opt.value = ch;
+        opt.textContent = ch;
+        $chapterFilter.appendChild(opt);
+      }
     });
-  });
 
-  function init(){
-    var chapters=[],chSet={};
-    ALL_QUESTIONS.forEach(function(q){var ch=q.chapterTitle||q.quizTitle;if(ch&&!chSet[ch]){chSet[ch]=true;chapters.push(ch)}});
-    chapters.forEach(function(ch){if(ch){var o=document.createElement('option');o.value=ch;o.textContent=ch;$cf.appendChild(o)}});
-    if(localStorage.getItem('cx_practice_dark')==='1')document.body.classList.add('dark');
-    var si=parseInt(localStorage.getItem('cx_practice_index')||'0');
-    if(si>0&&si<ALL_QUESTIONS.length)currentIndex=si;
-    applyFilters();render();updateImportStats();
+    // 恢复暗色模式
+    if (localStorage.getItem('cx_practice_dark') === '1') {
+      document.body.classList.add('dark');
+    }
+
+    // 恢复上次位置
+    const savedIndex = parseInt(localStorage.getItem('cx_practice_index') || '0');
+    if (savedIndex > 0 && savedIndex < ALL_QUESTIONS.length) {
+      currentIndex = savedIndex;
+    }
+
+    applyFilters();
+    render();
   }
 
-  function applyFilters(){
-    var cv=$cf.value,tv=$tf.value;
-    filteredQuestions=ALL_QUESTIONS.filter(function(q){
-      if(cv!=='all'&&q.chapterTitle!==cv&&q.quizTitle!==cv)return false;
-      if(tv!=='all'&&!q.type.includes(tv))return false;
+  // ═══ 筛选 ═══
+  function applyFilters() {
+    const chVal = $chapterFilter.value;
+    const typeVal = $typeFilter.value;
+    filteredQuestions = ALL_QUESTIONS.filter(q => {
+      if (chVal !== 'all' && q.chapterTitle !== chVal && q.quizTitle !== chVal) return false;
+      if (typeVal !== 'all' && !q.type.includes(typeVal)) return false;
       return true;
     });
-    if(filteredQuestions.length===0)filteredQuestions=ALL_QUESTIONS.slice();
-    if(currentIndex>=filteredQuestions.length)currentIndex=0;
+    if (filteredQuestions.length === 0) {
+      filteredQuestions = [...ALL_QUESTIONS];
+    }
+    if (currentIndex >= filteredQuestions.length) currentIndex = 0;
+    saveState();
   }
 
-  function render(){
-    if(filteredQuestions.length===0){$main.innerHTML='<div class="q-card" style="text-align:center;padding:60px"><p style="font-size:18px;color:var(--text2)">🎉 没有匹配的题目</p></div>';return}
-    var q=filteredQuestions[currentIndex];if(!q)return;selectedOption=null;judged=false;
-    $progress.style.width=((currentIndex+1)/filteredQuestions.length*100)+'%';updateStats();
-    var bc='sh';if(q.type.includes('\u5355\u9009'))bc='sg';else if(q.type.includes('\u591a\u9009'))bc='mu';else if(q.type.includes('\u5224\u65ad'))bc='jd';else if(q.type.includes('\u586b\u7a7a'))bc='fl';
-    var hOpt=q.options&&q.options.length>0;
-    var h='<div class="q-card" id="qcard"><div class="q-hdr"><span class="q-bdg '+bc+'">'+esc(q.type)+'</span><span class="q-meta">#'+(currentIndex+1)+'/'+filteredQuestions.length+' · '+esc(q.chapterTitle||q.quizTitle2||'')+'</span>'+(wrongMap[q.id]?'<span class="q-bdg" style="background:#ffeaa7;color:#d63031;font-size:11px">❌ 错题</span>':'')+'</div><div class="q-text">'+esc(q.question)+'</div>';
-    if(hOpt){h+='<div class="opts" id="opts">';q.options.forEach(function(opt,i){h+='<div class="opt" data-idx="'+i+'" onclick="__selOpt('+i+')"><span class="ol">'+esc(opt.label)+'</span><span class="ot">'+esc(opt.text)+'</span></div>'});h+='</div>'}
-    h+='<div class="ans-sec" id="ansSec"><div class="ans-box"><div class="al">💡 答案</div><div class="at">'+esc(q.answerText||q.answer||'(无答案)')+'</div></div></div>';
-    h+='<div class="act-bar"><button class="btn-o" onclick="__prevQ()">◀ 上一题<span class="key-h">←</span></button><button class="btn-p" id="btnRev" onclick="__revAns()">👁 显示答案<span class="key-h">Space</span></button><button class="btn-o" onclick="__nextQ()">下一题 ▶<span class="key-h">→</span></button></div></div>';
-    $main.innerHTML=h;localStorage.setItem('cx_practice_index',currentIndex);
+  // ═══ 渲染 ═══
+  function render() {
+    if (filteredQuestions.length === 0) {
+      $main.innerHTML = '<div class="question-card" style="text-align:center;padding:60px;"><p style="font-size:18px;color:var(--text-secondary);">🎉 没有匹配的题目</p></div>';
+      return;
+    }
+
+    const q = filteredQuestions[currentIndex];
+    if (!q) return;
+
+    showAnswer = false;
+    selectedOption = null;
+    judged = false;
+
+    // 进度
+    const progress = ((currentIndex + 1) / filteredQuestions.length) * 100;
+    $progress.style.width = progress + '%';
+    $stats.textContent = (currentIndex + 1) + ' / ' + filteredQuestions.length + ' | ✅ ' + correctCount + ' | 📊 ' + totalCount;
+
+    // 题型徽章
+    let badgeClass = 'short';
+    if (q.type.includes('单选')) badgeClass = 'single';
+    else if (q.type.includes('多选')) badgeClass = 'multi';
+    else if (q.type.includes('判断')) badgeClass = 'judge';
+    else if (q.type.includes('填空')) badgeClass = 'fill';
+
+    const hasOptions = q.options && q.options.length > 0;
+
+    let html = '';
+    html += '<div class="question-card" id="qcard">';
+    html += '<div class="q-header">';
+    html += '<span class="q-badge ' + badgeClass + '">' + escapeHtml(q.type) + '</span>';
+    html += '<span class="q-meta">#' + (currentIndex + 1) + ' · ' + escapeHtml(q.chapterTitle || q.quizTitle2 || '') + '</span>';
+    html += '</div>';
+    html += '<div class="q-text">' + escapeHtml(q.question) + '</div>';
+
+    if (hasOptions) {
+      html += '<div class="options" id="options">';
+      q.options.forEach((opt, i) => {
+        html += '<div class="option" data-idx="' + i + '" onclick="window.__selectOption(' + i + ')">';
+        html += '<span class="opt-label">' + escapeHtml(opt.label) + '</span>';
+        html += '<span class="opt-text">' + escapeHtml(opt.text) + '</span>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    html += '<div class="answer-section" id="answerSection">';
+    html += '<div class="answer-box">';
+    html += '<div class="ans-label">💡 答案</div>';
+    html += '<div class="ans-text" id="ansText">' + escapeHtml(q.answerText || q.answer || '(无答案)') + '</div>';
+    html += '</div>';
+    html += '</div>';
+
+    html += '<div class="action-bar">';
+    html += '<button class="btn-outline" onclick="window.__prevQuestion()">◀ 上一题<span class="key-hint">←</span></button>';
+    html += '<button class="btn-primary" id="btnReveal" onclick="window.__revealAnswer()">👁 显示答案<span class="key-hint">Space</span></button>';
+    html += '<button class="btn-outline" onclick="window.__nextQuestion()">下一题 ▶<span class="key-hint">→</span></button>';
+    html += '</div>';
+
+    html += '</div>';
+    $main.innerHTML = html;
+
+    saveState();
   }
 
-  function updateStats(){var wc=0;for(var k in wrongMap)wc++;$stats.textContent=(currentIndex+1)+'/'+filteredQuestions.length+' | ✅'+correctCount+' | 📊'+totalCount+' | ❌'+wc}
+  // ═══ 全局函数（供 onclick 调用） ═══
+  window.__selectOption = function(idx) {
+    if (judged) return;
+    const q = filteredQuestions[currentIndex];
+    if (!q || !q.options) return;
+    selectedOption = idx;
+    document.querySelectorAll('.option').forEach((el, i) => {
+      el.classList.toggle('selected', i === idx);
+    });
+  };
 
-  window.__selOpt=__selOpt;window.__revAns=__revAns;window.__prevQ=__prevQ;window.__nextQ=__nextQ;
-  function __selOpt(idx){if(wrongJudged||judged)return;var q=filteredQuestions[currentIndex];if(!q||!q.options)return;selectedOption=idx;document.querySelectorAll('.opt').forEach(function(el,i){el.classList.toggle('sel',i===idx)})}
-  function __revAns(){var q=filteredQuestions[currentIndex];if(!q)return;judged=true;var sec=$('ansSec');if(sec)sec.classList.add('show');var btn=$('btnRev');if(btn){btn.textContent='✅ 已显示';btn.className='btn-s'}
-    if(q.options&&q.options.length>0&&selectedOption!==null){document.querySelectorAll('.opt').forEach(function(el,i){var lbl=q.options[i].label;if(q.answer&&q.answer.includes(lbl))el.classList.add('ca');else if(i===selectedOption&&!(q.answer&&q.answer.includes(lbl)))el.classList.add('wa')})
-      var selLabel=q.options[selectedOption]?q.options[selectedOption].label:'';var isCorrect=q.answer&&q.answer.includes(selLabel);
-      if(!answeredMap[q.id]){answeredMap[q.id]=true;if(isCorrect)correctCount++;totalCount++;localStorage.setItem('cx_practice_correct',correctCount);localStorage.setItem('cx_practice_total',totalCount);localStorage.setItem('cx_practice_answered',JSON.stringify(answeredMap))}
-      if(!isCorrect){addWrongQuestion(q)}else{removeWrongQuestion(q.id)}
-      var card=$('qcard');if(card)card.classList.add(isCorrect?'correct':'wrong')
-    }else if(!(q.options&&q.options.length>0)){if(!answeredMap[q.id]){answeredMap[q.id]=true;totalCount++;localStorage.setItem('cx_practice_total',totalCount);localStorage.setItem('cx_practice_answered',JSON.stringify(answeredMap))}}
-    updateStats()
-  }
-  function __prevQ(){currentIndex=currentIndex>0?currentIndex-1:filteredQuestions.length-1;render()}
-  function __nextQ(){currentIndex=currentIndex<filteredQuestions.length-1?currentIndex+1:0;render()}
+  window.__revealAnswer = function() {
+    const q = filteredQuestions[currentIndex];
+    if (!q) return;
+    showAnswer = true;
+    judged = true;
+    const $section = document.getElementById('answerSection');
+    if ($section) $section.classList.add('show');
+    const $btn = document.getElementById('btnReveal');
+    if ($btn) { $btn.textContent = '✅ 已显示'; $btn.classList.add('btn-success'); $btn.classList.remove('btn-primary'); }
 
-  function addWrongQuestion(q){if(!wrongMap[q.id]){wrongMap[q.id]={id:q.id,type:q.type,question:q.question,options:q.options,answer:q.answer,answerText:q.answerText,chapterTitle:q.chapterTitle,quizTitle:q.quizTitle,quizTitle2:q.quizTitle2,count:1,wrongDate:new Date().toISOString()}}else{wrongMap[q.id].count++}saveWrongMap()}
-  function removeWrongQuestion(qId){if(wrongMap[qId]){delete wrongMap[qId];saveWrongMap()}}
-  function saveWrongMap(){localStorage.setItem('cx_wrong_map',JSON.stringify(wrongMap))}
+    // 判断选项正误
+    if (q.options && q.options.length > 0 && selectedOption !== null) {
+      document.querySelectorAll('.option').forEach((el, i) => {
+        const optLabel = q.options[i].label;
+        if (q.answer && q.answer.includes(optLabel)) {
+          el.classList.add('correct-answer');
+        } else if (i === selectedOption && !(q.answer && q.answer.includes(optLabel))) {
+          el.classList.add('wrong-answer');
+        }
+      });
 
-  function renderWrongList(){
-    var wrongArr=[];for(var k in wrongMap)wrongArr.push(wrongMap[k]);
-    if(wrongPracticeMode&&wrongPracticeQuestions.length>0){renderWrongPractice();return}
-    wrongPracticeMode=false;$bwb.style.display='none';$bpw.style.display=wrongArr.length>0?'':'none';
-    $ws.textContent='\u5171 '+wrongArr.length+' \u9053\u9519\u9898';
-    if(wrongArr.length===0){$wm.innerHTML='<div class="wrong-empty">🎉 暂无错题</div>';return}
-    var h='<div class="wrong-list">';
-    wrongArr.forEach(function(wq){var p=wq.question;if(p.length>80)p=p.slice(0,80)+'…';h+='<div class="wrong-item" data-id="'+esc(wq.id)+'"><div class="wi-q">'+esc(p)+'</div><div class="wi-meta">'+esc(wq.type)+' · '+esc(wq.chapterTitle||wq.quizTitle||'')+' · 错 '+wq.count+' 次</div><div class="wi-ans">✅ 答案：'+esc(wq.answerText||wq.answer||'(无答案)')+'</div></div>'});
-    h+='</div>';$wm.innerHTML=h;
-    document.querySelectorAll('.wrong-item').forEach(function(el){el.addEventListener('click',function(){var qid=this.dataset.id,found=false;for(var i=0;i<ALL_QUESTIONS.length;i++){if(ALL_QUESTIONS[i].id===qid){currentIndex=i;found=true;break}}if(found){applyFilters();document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active')});document.querySelectorAll('.tab-content').forEach(function(c){c.classList.remove('active')});document.querySelector('[data-tab="practice"]').classList.add('active');$('tabPractice').classList.add('active');render();toast('📌 已跳转到错题')}else{toast('⚠️ 该题不在题库中')}})});
-  }
+      // 统计
+      const selectedLabel = q.options[selectedOption] ? q.options[selectedOption].label : '';
+      const isCorrect = q.answer && q.answer.includes(selectedLabel);
+      if (!answeredMap[q.id]) {
+        answeredMap[q.id] = true;
+        if (isCorrect) correctCount++;
+        totalCount++;
+        localStorage.setItem('cx_practice_correct', correctCount);
+        localStorage.setItem('cx_practice_total', totalCount);
+        localStorage.setItem('cx_practice_answered', JSON.stringify(answeredMap));
+      }
 
-  function renderWrongPractice(){
-    $bwb.style.display='';$bpw.style.display='none';
-    $ws.textContent='错题练习 '+(currentIndex+1)+'/'+wrongPracticeQuestions.length;
-    if(wrongPracticeQuestions.length===0){$wm.innerHTML='<div class="wrong-empty">🎉 错题已全部掌握</div>';wrongPracticeMode=false;return}
-    var q=wrongPracticeQuestions[currentIndex];if(!q)return;
-    var bc='sh';if(q.type.includes('\u5355\u9009'))bc='sg';else if(q.type.includes('\u591a\u9009'))bc='mu';else if(q.type.includes('\u5224\u65ad'))bc='jd';else if(q.type.includes('\u586b\u7a7a'))bc='fl';
-    var hOpt=q.options&&q.options.length>0;
-    var h='<div class="q-card" id="wqcard"><div class="q-hdr"><span class="q-bdg '+bc+'">'+esc(q.type)+'</span><span class="q-meta">'+(currentIndex+1)+'/'+wrongPracticeQuestions.length+' · 错 '+(q.count||1)+' 次</span></div><div class="q-text">'+esc(q.question)+'</div>';
-    if(hOpt){h+='<div class="opts" id="wopts">';q.options.forEach(function(opt,i){h+='<div class="opt" data-idx="'+i+'" onclick="__wSelOpt('+i+')"><span class="ol">'+esc(opt.label)+'</span><span class="ot">'+esc(opt.text)+'</span></div>'});h+='</div>'}
-    h+='<div class="ans-sec" id="wAnsSec"><div class="ans-box"><div class="al">💡 答案</div><div class="at">'+esc(q.answerText||q.answer||'(无答案)')+'</div></div></div>';
-    h+='<div class="act-bar"><button class="btn-o" onclick="__wPrev()">◀ 上一题</button><button class="btn-p" id="btnWRev" onclick="__wRev()">👁 显示答案</button><button class="btn-o" onclick="__wNext()">下一题 ▶</button></div></div>';
-    $wm.innerHTML=h;wrongSelected=null;wrongJudged=false;
-  }
+      const $card = document.getElementById('qcard');
+      if ($card) {
+        $card.classList.add(isCorrect ? 'correct' : 'wrong');
+      }
+    } else if (!(q.options && q.options.length > 0)) {
+      // 主观题 - 直接统计
+      if (!answeredMap[q.id]) {
+        answeredMap[q.id] = true;
+        totalCount++;
+        localStorage.setItem('cx_practice_total', totalCount);
+        localStorage.setItem('cx_practice_answered', JSON.stringify(answeredMap));
+      }
+    }
 
-  window.__wSelOpt=__wSelOpt;window.__wRev=__wRev;window.__wPrev=__wPrev;window.__wNext=__wNext;
-  function __wSelOpt(idx){if(wrongJudged)return;wrongSelected=idx;document.querySelectorAll('.opt').forEach(function(el,i){el.classList.toggle('sel',i===idx)})}
-  function __wRev(){var q=wrongPracticeQuestions[currentIndex];if(!q)return;wrongJudged=true;var sec=$('wAnsSec');if(sec)sec.classList.add('show');var btn=$('btnWRev');if(btn){btn.textContent='✅ 已显示';btn.className='btn-s'}
-    if(q.options&&q.options.length>0&&wrongSelected!==null){document.querySelectorAll('.opt').forEach(function(el,i){var lbl=q.options[i].label;if(q.answer&&q.answer.includes(lbl))el.classList.add('ca');else if(i===wrongSelected&&!(q.answer&&q.answer.includes(lbl)))el.classList.add('wa')})
-      var selLabel=q.options[wrongSelected]?q.options[wrongSelected].label:'';var isCorrect=q.answer&&q.answer.includes(selLabel);
-      var card=$('wqcard');if(card)card.classList.add(isCorrect?'correct':'wrong');
-      if(isCorrect){removeWrongQuestion(q.id);toast('✅ 已掌握！已从错题本移除')}else{toast('❌ 继续加油')}
-    }updateStats()}
-  function __wPrev(){currentIndex=currentIndex>0?currentIndex-1:wrongPracticeQuestions.length-1;renderWrongPractice()}
-  function __wNext(){currentIndex=currentIndex<wrongPracticeQuestions.length-1?currentIndex+1:0;renderWrongPractice()}
+    $stats.textContent = (currentIndex + 1) + ' / ' + filteredQuestions.length + ' | ✅ ' + correctCount + ' | 📊 ' + totalCount;
+  };
 
-  $bpw.addEventListener('click',function(){var wa=[];for(var k in wrongMap)wa.push(wrongMap[k]);if(wa.length===0){toast('🎉 暂无错题');return}
-    wrongPracticeMode=true;wrongPracticeQuestions=[];wa.forEach(function(wq){for(var i=0;i<ALL_QUESTIONS.length;i++){if(ALL_QUESTIONS[i].id===wq.id){wrongPracticeQuestions.push(Object.assign({},ALL_QUESTIONS[i],{count:wq.count}));break}}})
-    if(wrongPracticeQuestions.length===0){toast('⚠️ 错题数据不完整');return}
-    currentIndex=0;renderWrongPractice()
+  window.__prevQuestion = function() {
+    if (currentIndex > 0) {
+      currentIndex--;
+    } else {
+      currentIndex = filteredQuestions.length - 1;
+    }
+    render();
+  };
+
+  window.__nextQuestion = function() {
+    if (currentIndex < filteredQuestions.length - 1) {
+      currentIndex++;
+    } else {
+      currentIndex = 0;
+    }
+    render();
+  };
+
+  // ═══ 键盘导航 ═══
+  document.addEventListener('keydown', function(e) {
+    if (e.target.tagName === 'SELECT') return;
+    switch(e.key) {
+      case 'ArrowLeft': e.preventDefault(); window.__prevQuestion(); break;
+      case 'ArrowRight': e.preventDefault(); window.__nextQuestion(); break;
+      case ' ': e.preventDefault(); window.__revealAnswer(); break;
+      case '1': case '2': case '3': case '4': case '5': case '6': {
+        const idx = parseInt(e.key) - 1;
+        if (filteredQuestions[currentIndex] && filteredQuestions[currentIndex].options && idx < filteredQuestions[currentIndex].options.length) {
+          window.__selectOption(idx);
+        }
+        break;
+      }
+    }
   });
-  $bwb.addEventListener('click',function(){wrongPracticeMode=false;currentIndex=0;renderWrongList()});
-  $bcw.addEventListener('click',function(){if(confirm('\u786e\u5b9a\u6e05\u7a7a\u6240\u6709\u9519\u9898\u8bb0\u5f55\u5417\uff1f')){wrongMap={};localStorage.removeItem('cx_wrong_map');renderWrongList();updateStats();updateImportStats();toast('🗑 清空错题本')}});
 
-  function updateImportStats(){
-    var chs={};ALL_QUESTIONS.forEach(function(q){var ch=q.chapterTitle||q.quizTitle;if(ch)chs[ch]=true});
-    var wc=0;for(var k in wrongMap)wc++;
-    $ist.textContent=ALL_QUESTIONS.length;$isw.textContent=wc;$isc.textContent=correctCount;$isch.textContent=Object.keys(chs).length;
+  // ═══ 筛选事件 ═══
+  $chapterFilter.addEventListener('change', function() { currentIndex = 0; applyFilters(); render(); });
+  $typeFilter.addEventListener('change', function() { currentIndex = 0; applyFilters(); render(); });
+
+  // ═══ 随机按钮 ═══
+  $btnRandom.addEventListener('click', function() {
+    $btnRandom.classList.toggle('active');
+    if ($btnRandom.classList.contains('active')) {
+      // 随机打乱
+      for (let i = filteredQuestions.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [filteredQuestions[i], filteredQuestions[j]] = [filteredQuestions[j], filteredQuestions[i]];
+      }
+      currentIndex = 0;
+      toast('🔀 已随机打乱');
+    } else {
+      // 恢复原始顺序
+      applyFilters();
+      currentIndex = 0;
+      toast('↩ 已恢复顺序');
+    }
+    render();
+  });
+
+  // ═══ 重置按钮 ═══
+  $btnReset.addEventListener('click', function() {
+    if (confirm('确定要重置所有练习进度吗？')) {
+      correctCount = 0;
+      totalCount = 0;
+      currentIndex = 0;
+      localStorage.removeItem('cx_practice_correct');
+      localStorage.removeItem('cx_practice_total');
+      localStorage.removeItem('cx_practice_answered');
+      localStorage.removeItem('cx_practice_index');
+      Object.keys(answeredMap).forEach(k => delete answeredMap[k]);
+      toast('🔄 进度已重置');
+      render();
+    }
+  });
+
+  // ═══ 暗色模式 ═══
+  $btnDark.addEventListener('click', function() {
+    document.body.classList.toggle('dark');
+    const isDark = document.body.classList.contains('dark');
+    localStorage.setItem('cx_practice_dark', isDark ? '1' : '0');
+  });
+
+  // ═══ 辅助 ═══
+  function saveState() {
+    localStorage.setItem('cx_practice_index', currentIndex);
   }
-
-  $id.addEventListener('click',function(){$ifi.click()});
-  $id.addEventListener('dragover',function(e){e.preventDefault();this.classList.add('dragover')});
-  $id.addEventListener('dragleave',function(){this.classList.remove('dragover')});
-  $id.addEventListener('drop',function(e){e.preventDefault();this.classList.remove('dragover');if(e.dataTransfer.files.length>0)processFile(e.dataTransfer.files[0])});
-  $ifi.addEventListener('change',function(){if(this.files.length>0)processFile(this.files[0]);this.value=''});
-
-  function processFile(file){
-    if(!file.name.endsWith('.json')){showResult(false,'仅支持 JSON 文件');return}
-    var reader=new FileReader();
-    reader.onload=function(e){try{var data=JSON.parse(e.target.result);var imported=extractQ(data);if(imported.length===0){showResult(false,'未解析出题目');return};var r=dedup(imported);showResult(true,r)}catch(err){showResult(false,'JSON解析失败: '+err.message)}};
-    reader.readAsText(file,'UTF-8');
+  function escapeHtml(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
-
-  function extractQ(data){
-    var qs=[];
-    if(data.quizzes&&Array.isArray(data.quizzes)){data.quizzes.forEach(function(qz){if(qz.questions&&Array.isArray(qz.questions)){qz.questions.forEach(function(q){qs.push(Object.assign({},q,{chapterTitle:qz.chapterTitle||qz.quizTitle||q.chapterTitle,quizTitle:qz.quizTitle||'',quizTitle2:qz.quizTitle||''}))})}})}
-    else if(Array.isArray(data)){data.forEach(function(q){qs.push(Object.assign({},q,{chapterTitle:q.chapterTitle||q.quizTitle||'',quizTitle:q.quizTitle||'',quizTitle2:q.quizTitle||''}))})}
-    else if(data.questions&&Array.isArray(data.questions)){data.questions.forEach(function(q){qs.push(Object.assign({},q,{chapterTitle:q.chapterTitle||data.title||'',quizTitle:q.quizTitle||'',quizTitle2:q.quizTitle||''}))})}
-    qs.forEach(function(q,i){if(!q.id)q.id='imp_'+i+'_'+hash(q.question+(q.answer||''))});
-    return qs;
+  function toast(msg) {
+    $toast.textContent = msg;
+    $toast.classList.add('show');
+    clearTimeout($toast._t);
+    $toast._t = setTimeout(() => $toast.classList.remove('show'), 2000);
   }
-
-  function hash(s){var h=0;for(var i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0}return Math.abs(h).toString(36)}
-
-  function dedup(imported){
-    var existIds={},existTexts={},newC=0,dupC=0;
-    ALL_QUESTIONS.forEach(function(q){existIds[q.id]=true;existTexts[q.question.trim()+'|'+(q.answer||'')]=true});
-    imported.forEach(function(q){if(existIds[q.id]||existTexts[q.question.trim()+'|'+(q.answer||'')]){dupC++}else{q.globalIndex=ALL_QUESTIONS.length;ALL_QUESTIONS.push(q);existIds[q.id]=true;existTexts[q.question.trim()+'|'+(q.answer||'')]=true;newC++}});
-    var chapters=[],chSet={};ALL_QUESTIONS.forEach(function(q){var ch=q.chapterTitle||q.quizTitle;if(ch&&!chSet[ch]){chSet[ch]=true;chapters.push(ch)}});
-    $cf.innerHTML='<option value="all">📂 全部章节</option>';
-    chapters.forEach(function(ch){if(ch){var o=document.createElement('option');o.value=ch;o.textContent=ch;$cf.appendChild(o)}});
-    applyFilters();updateImportStats();
-    return{newCount:newC,dupCount:dupC,total:ALL_QUESTIONS.length};
-  }
-
-  function showResult(ok,r){
-    $ir.className='import-result show '+(ok?'ok':'err');
-    if(ok){$irc.textContent='✅ 导入完成';$ird.textContent='新增 '+r.newCount+' 题，去重 '+r.dupCount+' 题，共 '+r.total+' 题';toast('📥 导入 '+r.newCount+' 题');currentIndex=0;setTimeout(function(){document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active')});document.querySelectorAll('.tab-content').forEach(function(c){c.classList.remove('active')});document.querySelector('[data-tab="practice"]').classList.add('active');$('tabPractice').classList.add('active');render()},1200)}
-    else{$irc.textContent='❌ 导入失败';$ird.textContent=r}
-  }
-
-  $cf.addEventListener('change',function(){currentIndex=0;applyFilters();render()});
-  $tf.addEventListener('change',function(){currentIndex=0;applyFilters();render()});
-  $br.addEventListener('click',function(){$br.classList.toggle('active');if($br.classList.contains('active')){for(var i=filteredQuestions.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=filteredQuestions[i];filteredQuestions[i]=filteredQuestions[j];filteredQuestions[j]=t}currentIndex=0;toast('🔀 已随机打乱')}else{applyFilters();currentIndex=0;toast('↩ 已恢复顺序')}render()});
-  $brs.addEventListener('click',function(){if(confirm('\u786e\u5b9a\u91cd\u7f6e\u6240\u6709\u7ec3\u4e60\u8fdb\u5ea6\u5417\uff1f')){correctCount=0;totalCount=0;currentIndex=0;localStorage.removeItem('cx_practice_correct');localStorage.removeItem('cx_practice_total');localStorage.removeItem('cx_practice_answered');localStorage.removeItem('cx_practice_index');for(var k in answeredMap)delete answeredMap[k];toast('🔄 已重置');render()}});
-  $bd.addEventListener('click',function(){document.body.classList.toggle('dark');localStorage.setItem('cx_practice_dark',document.body.classList.contains('dark')?'1':'0')});
-
-  document.addEventListener('keydown',function(e){if(e.target.tagName==='SELECT'||e.target.tagName==='INPUT')return;if(!$('tabPractice').classList.contains('active'))return;switch(e.key){case'ArrowLeft':e.preventDefault();__prevQ();break;case'ArrowRight':e.preventDefault();__nextQ();break;case' ':e.preventDefault();__revAns();break;case'1':case'2':case'3':case'4':case'5':case'6':var idx=parseInt(e.key)-1;if(filteredQuestions[currentIndex]&&filteredQuestions[currentIndex].options&&idx<filteredQuestions[currentIndex].options.length)__selOpt(idx);break}});
-
-  function esc(s){if(!s)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
-  function toast(msg){$tt.textContent=msg;$tt.classList.add('show');clearTimeout($tt._t);$tt._t=setTimeout(function(){$tt.classList.remove('show')},2000)}
 
   init();
 })();
-</script>
+<\/script>
 </body>
 </html>`;
   }
@@ -3909,8 +3983,8 @@ body{font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft Y
         <button class="cx-toggle" id="cxToggle">−</button>
       </div>
       <div class="cx-body">
-        <button class="cx-btn primary" id="cxExportAll">📦 一键导出 (JSON+HTML 错题本+导入)</button>
-        <button class="cx-btn secondary" id="cxDownloadPractice">📝 重新下载练习HTML</button>
+        <button class="cx-btn primary" id="cxExportAll">📦 一键导出 (JSON+HTML)</button>
+        <button class="cx-btn secondary" id="cxDownloadPractice">📝 仅重新下载练习HTML</button>
         <div class="cx-progress" id="cxProgress">
           <div class="cx-progress-text" id="cxProgressText">准备中...</div>
           <div class="cx-progress-bar"><div class="cx-progress-fill" id="cxProgressFill"></div></div>
